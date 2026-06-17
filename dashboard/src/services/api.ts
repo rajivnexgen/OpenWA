@@ -113,6 +113,29 @@ export interface Chat {
   lastMessage?: string;
 }
 
+// Engine-neutral message types (mirrors the backend's IWhatsAppEngine MessageType). The backend
+// normalizes raw engine tokens at the adapter boundary (#265/#270), so persisted rows, the
+// message.received/sent payloads, and the websocket all use these values.
+export const MESSAGE_TYPES = [
+  'text',
+  'image',
+  'video',
+  'audio',
+  'voice',
+  'document',
+  'sticker',
+  'location',
+  'contact',
+  'revoked',
+  'unknown',
+] as const;
+export type MessageType = (typeof MESSAGE_TYPES)[number];
+
+/** Coerce an arbitrary string (e.g. a raw websocket payload field) to a known MessageType. */
+export function asMessageType(value: string | undefined): MessageType {
+  return (MESSAGE_TYPES as readonly string[]).includes(value ?? '') ? (value as MessageType) : 'unknown';
+}
+
 export interface ChatMessage {
   id: string;
   waMessageId?: string;
@@ -120,7 +143,7 @@ export interface ChatMessage {
   from: string;
   to: string;
   body: string;
-  type: string;
+  type: MessageType;
   direction: 'incoming' | 'outgoing';
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
   timestamp?: number;
