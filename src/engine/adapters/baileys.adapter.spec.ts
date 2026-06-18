@@ -45,7 +45,10 @@ const saveCreds = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('@whiskeysockets/baileys', () => ({
   __esModule: true,
-  default: jest.fn(() => fakeSock),
+  default: jest.fn(() => {
+    fakeSock.resetEmitter();
+    return fakeSock;
+  }),
   useMultiFileAuthState: jest.fn().mockResolvedValue({ state: { creds: {}, keys: {} }, saveCreds }),
   fetchLatestBaileysVersion: jest.fn().mockResolvedValue({ version: [2, 3000, 0] }),
   getContentType: jest.fn(() => 'conversation'),
@@ -260,20 +263,21 @@ describe('BaileysAdapter lifecycle hardening — I4 reconnect backoff', () => {
     jest.useFakeTimers();
 
     // Each close increments reconnectAttempts and schedules a timer.
-    // After the timer fires, connect() runs and re-attaches listeners to fakeSock.
-    // We do NOT reset the emitter — each reconnect adds new listeners, and the close
-    // event fires them all (they all point at the same adapter, so the increment happens once per fire).
-    // Strategy: fire close → run timers (reconnect executes) → fire close again → repeat.
+    // After the timer fires, connect() calls makeWASocket() which resets the emitter,
+    // so each reconnect cycle has exactly one listener — no accumulation across attempts.
+    // Strategy: fire close → run timers (reconnect executes, emitter reset) → fire close again → repeat.
     for (let i = 0; i < 5 /* MAX_RECONNECT_ATTEMPTS */; i++) {
       fireRecoverableClose();
       await jest.runAllTimersAsync();
     }
 
-    // The (MAX+1)th close — reconnectAttempts is now MAX → exhausted path
+    // The (MAX+1)th close — reconnectAttempts is now MAX (5) → exhausted path:
+    // no reconnect scheduled, status → FAILED, onError fired exactly once.
     fireRecoverableClose();
     await jest.runAllTimersAsync();
 
     expect(adapter.getStatus()).toBe(EngineStatus.FAILED);
+    expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('exhausted'));
   });
 
@@ -297,11 +301,12 @@ describe('BaileysAdapter lifecycle hardening — I4 reconnect backoff', () => {
       await jest.runAllTimersAsync();
     }
 
-    // (MAX+1)th drop after reset → FAILED again
+    // (MAX+1)th drop after reset → FAILED again, onError fired exactly once
     fireRecoverableClose();
     await jest.runAllTimersAsync();
 
     expect(adapter.getStatus()).toBe(EngineStatus.FAILED);
+    expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('exhausted'));
   });
 
