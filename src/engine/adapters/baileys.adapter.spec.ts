@@ -1674,3 +1674,36 @@ describe('BaileysAdapter sendSeen + markUnread + deleteChat', () => {
     expect(fakeSock.chatModify).not.toHaveBeenCalled();
   });
 });
+
+describe('BaileysAdapter status posting', () => {
+  beforeEach(() => {
+    fakeSock.user = { id: '628999:1@s.whatsapp.net', name: 'Me' };
+    fakeSock.resetEmitter();
+    jest.clearAllMocks();
+  });
+
+  const ready = async (): Promise<BaileysAdapter> => {
+    const adapter = newAdapter();
+    await adapter.initialize(noopCallbacks());
+    fakeSock.fire('connection.update', { connection: 'open' });
+    return adapter;
+  };
+
+  it('postTextStatus sends to status@broadcast with denormalized statusJidList + styling, no store write', async () => {
+    fakeSock.sendMessage.mockResolvedValue({ key: { id: 'STATUS1' }, messageTimestamp: 1719600000 });
+    const adapter = await ready();
+    const result = await adapter.postTextStatus('hello', {
+      recipients: ['628111@c.us', '628222@lid'],
+      backgroundColor: '#25D366',
+      font: 2,
+    });
+    expect(fakeSock.sendMessage).toHaveBeenCalledWith('status@broadcast', { text: 'hello' }, {
+      statusJidList: ['628111@s.whatsapp.net', '628222@lid'],
+      backgroundColor: '#25D366',
+      font: 2,
+    });
+    expect(result.statusId).toBe('STATUS1');
+    expect(result.expiresAt.getTime() - result.timestamp.getTime()).toBe(24 * 3_600_000);
+    expect(fakeStore.put).not.toHaveBeenCalled();
+  });
+});

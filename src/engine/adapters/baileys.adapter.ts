@@ -797,8 +797,8 @@ export class BaileysAdapter implements IWhatsAppEngine {
   getContactStatus(_contactId: string): Promise<Status[]> {
     return this.unsupported('getContactStatus');
   }
-  postTextStatus(_text: string, _options: StatusPostOptions): Promise<StatusResult> {
-    return this.unsupported('postTextStatus');
+  postTextStatus(text: string, options: StatusPostOptions): Promise<StatusResult> {
+    return this.postStatus({ text }, options);
   }
   postImageStatus(_media: MediaInput, _options: StatusPostOptions): Promise<StatusResult> {
     return this.unsupported('postImageStatus');
@@ -1310,6 +1310,35 @@ export class BaileysAdapter implements IWhatsAppEngine {
       throw new MessageNotFoundError(messageId);
     }
     return found;
+  }
+
+  /**
+   * Post a status (story) to `status@broadcast` with a denormalized `statusJidList` (the allow-list of
+   * neutral recipients folded back to the engine dialect). Image/video variants route through here too.
+   * The outbound status echo is NOT persisted — status isn't a chat message (the inbound filter in
+   * handleMessagesUpsert already skips `type:'append'` echoes).
+   */
+  private async postStatus(content: AnyMessageContent, options: StatusPostOptions): Promise<StatusResult> {
+    this.ensureReady();
+    const statusJidList = options.recipients.map(r => this.sessionStore.toEngineJid(r));
+    const sent = await this.sock!.sendMessage('status@broadcast', content, {
+      statusJidList,
+      backgroundColor: options.backgroundColor,
+      font: options.font,
+    });
+    return this.toStatusResult(sent);
+  }
+
+  /** Shape a Baileys send result into a StatusResult; expiresAt is timestamp + 24h (WhatsApp status TTL). */
+  private toStatusResult(sent: WAMessage | undefined): StatusResult {
+    const ts = sent?.messageTimestamp
+      ? new Date(this.toUnixSeconds(sent.messageTimestamp) * 1000)
+      : new Date();
+    return {
+      statusId: sent?.key?.id ?? '',
+      timestamp: ts,
+      expiresAt: new Date(ts.getTime() + 24 * 3_600_000),
+    };
   }
 
   private unsupported(method: string): Promise<any> {
