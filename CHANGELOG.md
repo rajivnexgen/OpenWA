@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-02
+
+### Changed
+
+- ⚠️ **The WebSocket handshake no longer accepts the API key via the `?apiKey=` query string.** A key in the URL leaks into proxy and access logs. The handshake now accepts the key only via the Socket.IO `auth.apiKey` field (recommended) or the `X-API-Key` header. **Migration:** if a client connected with `io(url + '?apiKey=...')`, switch to `io(url, { auth: { apiKey } })` or send the `X-API-Key` header. (#601)
+- ⚠️ **The MCP server now defaults to read-only.** Write (state-changing) tools are exposed only when `MCP_READONLY=false` is set explicitly; previously an unset `MCP_READONLY` defaulted to read-write, so enabling `MCP_ENABLED` silently exposed message-send and group tools. **Migration:** set `MCP_READONLY=false` to keep write tools available to MCP callers. (#601)
+
+### Security
+
+- **SSRF rejection messages no longer disclose the resolved internal IP address.** A blocked outbound URL (media-by-URL send, webhook registration) returned the guard's raw message, which named the internal address it resolved to — a reconnaissance oracle. The client now receives a generic message and the detail is logged server-side only. (#595)
+- **Imported session names are validated against path traversal.** A session name becomes the engine's on-disk auth-directory key, and the data-import path bypassed the normal validation, so a crafted name could escape the intended directory. Session-name safety is now enforced at the engine sink for every code path, and the importer skips (with a warning) any unsafe name. Save-config and storage-export responses also return relative paths instead of absolute host paths. (#598)
+- **Plugin capability calls are confined to the sessions a plugin is activated for.** Capability calls (send, engine reads, conversation send, handover, mappings) were gated only by the plugin's static manifest scope, so a plugin activated for one session could act on another. They now also honor the operator-set per-session activation. Plugin `net.fetch` is additionally bounded by a global concurrency limit so many concurrent fetches can't exhaust host memory. (#594)
+- **Inbound-webhook signature verification and config-secret handling hardened.** The HMAC signed content is reconstructed without interpreting `$`-substitution sequences (a body containing one no longer fails verification), the challenge token is compared in constant time, plugin config-secret redaction fails closed when a schema is unavailable and masks nested secrets, and a masked secret round-tripped from the UI no longer overwrites the stored value. (#592, #593)
+- **Rejected WebSocket authentication attempts are now audited** with the same event the REST guard emits, so credential probing over the WebSocket surface leaves a forensic trail. (#601)
+
+### Fixed
+
+- **Inbound-webhook (Integration Fabric) idempotency and delivery durability.** The dedup key now includes the plugin id (two plugins sharing an instance id no longer drop each other's deliveries); a delivery with no dedup header derives a deterministic id instead of a random one (so a provider retry dedups rather than duplicating a WhatsApp send); a redrive keeps a DLQ row redrivable when an inline dispatch is swallowed rather than marking it handled; and the conversation-mapping upsert is race-safe. (#591)
+- **Disappearing-chat (ephemeral) inbound messages on the Baileys engine.** Location coordinates are no longer dropped for an ephemeral location message, and ephemeral/view-once-wrapped messages in a history sync now map to their real type and body instead of an empty "unknown". (#596)
+- **A failed engine start no longer wedges a session.** If engine initialization fails, the half-built engine is now torn down and evicted instead of being left behind holding a concurrency slot and blocking restarts. Creating a session whose name loses a race to an identical one returns 409 Conflict instead of a 500, and bulk send now caps the number of concurrently-processing batches held in memory (`BULK_MAX_CONCURRENT_BATCHES`). (#600)
+- **PostgreSQL boot on managed instances.** The UUID-defaults migration no longer runs `CREATE EXTENSION pgcrypto` unconditionally — it is a core built-in on PostgreSQL 13+, and requiring the extension crash-looped startup on managed databases where the role can't create it. The extension is now touched only on PostgreSQL ≤ 12, with a clear error if it's genuinely needed and unavailable. (#599)
+- **The migration CLI works again.** The data-source module exported two `DataSource` instances, which the TypeORM CLI rejects, breaking every `migration:*` command. (#590)
+
 ## [0.8.0] - 2026-07-02
 
 ### Added
