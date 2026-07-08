@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-07-08
+
 ### Added
 
 - **Prometheus counter for terminally-failed webhook deliveries.** `/api/metrics` now exposes `openwa_webhook_delivery_failures_total`, incremented once per delivery that exhausts all its retries (mirroring the durable `webhook_delivery_failures` dead-letter record, on both the queued and the queue-disabled direct path). It is an in-process monotonic counter — cheap, real-time, and resetting only on restart, which Prometheus `rate()`/`increase()` treat as a normal counter reset — so a `COUNT(*)` over the retention-pruned failure table isn't queried per scrape. Operators can now alert on webhook failure rate from the scrape instead of tailing the structured log or querying the dead-letter endpoint.
