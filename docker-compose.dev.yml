@@ -82,6 +82,8 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    networks:
+      - nginx_proxy_man_aadtech_network
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:2785/api/health/ready']
       interval: 30s
